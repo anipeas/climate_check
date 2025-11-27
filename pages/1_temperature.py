@@ -1,7 +1,7 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from datetime import datetime
+from datetime import datetime, date
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -13,12 +13,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.ncei import NCEIClient
 
 st.set_page_config(
-    page_title="Historical Data - Climate Check",
+    page_title="Temperature Data - Climate Check",
     page_icon="📊",
     layout="wide",
 )
 
-st.title("📊 Historical Temperature Data")
+st.title("📊 Temperature Data")
 st.markdown("Explore temperature trends by location and time period")
 
 # Initialize session state
@@ -31,12 +31,13 @@ if 'selected_location' not in st.session_state:
     st.session_state.selected_location = [default_lat, default_lon]
 
 current_year = datetime.now().year
-default_start = current_year - 50
-default_end = current_year
+current_date = date.today()
+default_start_date = date(current_year - 50, 1, 1)
+default_end_date = current_date
 
-if 'start_year' not in st.session_state or 'end_year' not in st.session_state:
-    st.session_state.start_year = default_start
-    st.session_state.end_year = default_end
+if 'start_date' not in st.session_state or 'end_date' not in st.session_state:
+    st.session_state.start_date = default_start_date
+    st.session_state.end_date = default_end_date
 
 st.divider()
 
@@ -113,51 +114,81 @@ with st.expander("🔢 Enter Coordinates Manually"):
 
 st.divider()
 
-# Dataset Selection
-st.subheader("📊 Select Dataset")
-dataset_choice = st.radio(
-    "Choose data granularity",
-    options=['GSOM', 'GHCND'],
-    format_func=lambda x: 'GSOM - Monthly Data (1763+, faster)' if x == 'GSOM' else 'GHCND - Daily Data (1700s+, more detailed)',
-    horizontal=True,
-    help="GSOM provides monthly summaries. GHCND provides daily measurements with more detail."
-)
+# Dataset and Time Period Selection (side by side)
+col_dataset, col_time = st.columns(2)
 
-if dataset_choice == 'GHCND':
-    st.info("ℹ️ **Daily data**: Shows much more detail but may take longer to load for large date ranges")
-else:
-    st.info("ℹ️ **Monthly data**: Faster loading, good for long-term trends")
+with col_dataset:
+    st.subheader("📊 Select Dataset")
+    dataset_choice = st.radio(
+        "Choose data granularity",
+        options=['GSOM', 'GHCND'],
+        format_func=lambda x: 'GSOM - Monthly Data (1763+, faster)' if x == 'GSOM' else 'GHCND - Daily Data (1700s+, more detailed)',
+        horizontal=True,
+        help="GSOM provides monthly summaries. GHCND provides daily measurements with more detail."
+    )
 
-st.divider()
+    if dataset_choice == 'GHCND':
+        st.info("ℹ️ **Daily data**: Shows much more detail but may take longer to load for large date ranges")
+    else:
+        st.info("ℹ️ **Monthly data**: Faster loading, good for long-term trends")
 
-# Year Range Selection
-st.subheader("📅 Select Time Period")
+with col_time:
+    st.subheader("📅 Select Time Period")
 
-# Adjust min year based on dataset
-min_year = 1763 if dataset_choice == 'GSOM' else 1700
+    # Adjust min year based on dataset
+    min_year = 1763 if dataset_choice == 'GSOM' else 1700
+    min_date = date(min_year, 1, 1)
 
-year_range = st.slider(
-    "Select year range",
-    min_value=min_year,
-    max_value=current_year,
-    value=(max(min_year, st.session_state.start_year), st.session_state.end_year),
-    step=1,
-    help="Drag the handles to select start and end years. GHCND data available from 1700s, GSOM from 1763.",
-    label_visibility="collapsed"
-)
+    col_dates = st.columns(2)
 
-start_year, end_year = year_range
-st.session_state.start_year = start_year
-st.session_state.end_year = end_year
+    with col_dates[0]:
+        start_date = st.date_input(
+            "Start Date",
+            value=st.session_state.start_date,
+            min_value=min_date,
+            max_value=current_date,
+            help=f"Select start date. Data available from {min_year}."
+        )
 
-# Display year range info
-col_years = st.columns(3)
-with col_years[0]:
-    st.metric("Start Year", start_year)
-with col_years[1]:
-    st.metric("End Year", end_year)
-with col_years[2]:
-    st.metric("Years of Data", end_year - start_year + 1)
+    with col_dates[1]:
+        end_date = st.date_input(
+            "End Date",
+            value=st.session_state.end_date,
+            min_value=min_date,
+            max_value=current_date,
+            help="Select end date."
+        )
+
+    st.session_state.start_date = start_date
+    st.session_state.end_date = end_date
+
+    # Extract years for API calls
+    start_year = start_date.year
+    end_year = end_date.year
+
+    # Calculate time difference in years, months, days
+    delta = end_date - start_date
+    total_days = delta.days
+
+    # Calculate years, months, days
+    years = total_days // 365
+    remaining_days = total_days % 365
+    months = remaining_days // 30
+    days = remaining_days % 30
+
+    # Build duration string
+    duration_parts = []
+    if years > 0:
+        duration_parts.append(f"{years} year{'s' if years != 1 else ''}")
+    if months > 0:
+        duration_parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if days > 0 or len(duration_parts) == 0:
+        duration_parts.append(f"{days} day{'s' if days != 1 else ''}")
+
+    duration_str = ", ".join(duration_parts)
+
+    # Display date range info
+    st.info(f"📅 **Date range:** {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')} ({duration_str})")
 
 st.divider()
 
@@ -172,7 +203,7 @@ with col_center[1]:
 
 # Helper functions
 @st.cache_data(ttl=3600)
-def find_nearest_station(lat, lon, start_year, end_year, dataset='GSOM'):
+def find_nearest_station(lat, lon, start_date, end_date, dataset='GSOM'):
     """Find the nearest weather station with temperature data"""
     try:
         client = NCEIClient()
@@ -185,9 +216,9 @@ def find_nearest_station(lat, lon, start_year, end_year, dataset='GSOM'):
         stations = client.get_stations(
             datasetid=dataset,
             extent=extent,
-            startdate=f'{start_year}-01-01',
-            enddate=f'{end_year}-12-31',
-            datatypeid='TAVG',  # Must have average temperature
+            startdate=start_date.strftime('%Y-%m-%d'),
+            enddate=end_date.strftime('%Y-%m-%d'),
+            datatypeid='TMIN',  # Must have temperature data
             limit=100
         )
 
@@ -227,7 +258,7 @@ def find_nearest_station(lat, lon, start_year, end_year, dataset='GSOM'):
 
 
 @st.cache_data(ttl=3600)
-def fetch_temperature_data(station_id, start_year, end_year, dataset='GSOM'):
+def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
     """Fetch temperature data for a station"""
     try:
         client = NCEIClient()
@@ -237,14 +268,21 @@ def fetch_temperature_data(station_id, start_year, end_year, dataset='GSOM'):
         all_data = []
 
         # Temperature data types we want
-        temp_datatypes = ['TAVG', 'TMIN', 'TMAX']
+        temp_datatypes = ['TMIN', 'TMAX']
 
         # Set batch size based on dataset
         batch_size = 10 if dataset == 'GSOM' else 1
 
+        start_year = start_date.year
+        end_year = end_date.year
+
         for datatype in temp_datatypes:
             for year_start in range(start_year, end_year + 1, batch_size):
                 year_end = min(year_start + batch_size - 1, end_year)
+
+                # Use actual dates for first and last batch
+                batch_start = start_date.strftime('%Y-%m-%d') if year_start == start_year else f'{year_start}-01-01'
+                batch_end = end_date.strftime('%Y-%m-%d') if year_end == end_year else f'{year_end}-12-31'
 
                 try:
                     # Fetch data for this batch and datatype
@@ -253,8 +291,8 @@ def fetch_temperature_data(station_id, start_year, end_year, dataset='GSOM'):
                         datasetid=dataset,
                         stationid=station_id,
                         datatypeid=datatype,
-                        startdate=f'{year_start}-01-01',
-                        enddate=f'{year_end}-12-31',
+                        startdate=batch_start,
+                        enddate=batch_end,
                         max_results=10000
                     )
 
@@ -275,7 +313,7 @@ def fetch_temperature_data(station_id, start_year, end_year, dataset='GSOM'):
         # Convert temperature values to numeric
         df['value'] = pd.to_numeric(df['value'])
 
-        # Pivot to get TAVG, TMIN, TMAX as separate columns
+        # Pivot to get TMIN, TMAX as separate columns
         df_pivot = df.pivot_table(
             index=['year', 'month', 'date'],
             columns='datatype',
@@ -303,14 +341,14 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
     # Determine hover template based on granularity
     date_format = '%d %b %Y' if dataset == 'GHCND' else '%b %Y'
 
-    # Add TMAX and TMIN as shaded range
+    # Add TMAX and TMIN as separate lines
     if 'TMAX' in data.columns and 'TMIN' in data.columns:
         fig.add_trace(go.Scatter(
             x=data['date'],
             y=data['TMAX'],
             mode='lines',
             name='Maximum Temperature',
-            line=dict(color='rgba(255, 127, 14, 0.4)', width=1),
+            line=dict(color='rgba(255, 87, 51, 0.4)', width=1.5),
             showlegend=True,
             hovertemplate=f'%{{x|{date_format}}}<br>Max: %{{y:.1f}}°C<extra></extra>'
         ))
@@ -320,41 +358,10 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
             y=data['TMIN'],
             mode='lines',
             name='Minimum Temperature',
-            line=dict(color='rgba(44, 160, 44, 0.4)', width=1),
-            fill='tonexty',
-            fillcolor='rgba(200, 200, 200, 0.2)',
+            line=dict(color='rgba(0, 150, 136, 0.4)', width=1.5),
             showlegend=True,
             hovertemplate=f'%{{x|{date_format}}}<br>Min: %{{y:.1f}}°C<extra></extra>'
         ))
-
-    # Add TAVG (main line) - plot over the shaded range
-    if 'TAVG' in data.columns:
-        fig.add_trace(go.Scatter(
-            x=data['date'],
-            y=data['TAVG'],
-            mode='lines',
-            name='Average Temperature',
-            line=dict(color='rgb(31, 119, 180)', width=2),
-            hovertemplate=f'%{{x|{date_format}}}<br>Avg: %{{y:.1f}}°C<extra></extra>'
-        ))
-
-    # Add trend line for TAVG using all data points
-    if 'TAVG' in data.columns and len(data) > 1:
-        # Convert dates to numeric for polyfit
-        data_clean = data.dropna(subset=['TAVG'])
-        if len(data_clean) > 1:
-            x_numeric = (data_clean['date'] - data_clean['date'].min()).dt.days
-            z = np.polyfit(x_numeric, data_clean['TAVG'], 1)
-            p = np.poly1d(z)
-
-            fig.add_trace(go.Scatter(
-                x=data_clean['date'],
-                y=p(x_numeric),
-                mode='lines',
-                name='Trend',
-                line=dict(color='red', width=3, dash='dash'),
-                hovertemplate=f'%{{x|{date_format}}}<br>Trend: %{{y:.1f}}°C<extra></extra>'
-            ))
 
     # Update layout
     fig.update_layout(
@@ -394,14 +401,14 @@ if go_button:
         station, error = find_nearest_station(
             st.session_state.selected_location[0],
             st.session_state.selected_location[1],
-            start_year,
-            end_year,
+            start_date,
+            end_date,
             dataset_choice
         )
 
         if error:
             st.error(f"❌ {error}")
-            st.info("💡 Try selecting a different location or expanding the year range")
+            st.info("💡 Try selecting a different location or expanding the date range")
             st.stop()
 
         # Display station info
@@ -419,15 +426,15 @@ if go_button:
 
     # Step 2: Fetch temperature data
     granularity_text = "daily" if dataset_choice == 'GHCND' else "monthly"
-    with st.spinner(f"📊 Fetching {granularity_text} temperature data (TAVG, TMIN, TMAX)..."):
-        df, error = fetch_temperature_data(station['id'], start_year, end_year, dataset_choice)
+    with st.spinner(f"📊 Fetching {granularity_text} temperature data (TMIN, TMAX)..."):
+        df, error = fetch_temperature_data(station['id'], start_date, end_date, dataset_choice)
 
         if error:
             st.error(f"❌ {error}")
             st.stop()
 
         # Show what datatypes we got
-        available_types = [col for col in ['TAVG', 'TMIN', 'TMAX'] if col in df.columns]
+        available_types = [col for col in ['TMIN', 'TMAX'] if col in df.columns]
         years_with_data = sorted(df['year'].unique())
 
         data_points_label = "days" if dataset_choice == 'GHCND' else "months"
@@ -444,57 +451,34 @@ if go_button:
     st.divider()
     st.subheader("📊 Summary Statistics")
 
-    # Check if TAVG exists, if not calculate it from TMIN and TMAX
-    if 'TAVG' not in df.columns and 'TMIN' in df.columns and 'TMAX' in df.columns:
-        df['TAVG'] = (df['TMIN'] + df['TMAX']) / 2
-        st.info("ℹ️ TAVG not available - calculated as average of TMIN and TMAX")
+    col_stats = st.columns(3)
 
-    col_stats = st.columns(4)
-
-    if 'TAVG' in df.columns:
+    if 'TMAX' in df.columns and 'TMIN' in df.columns:
         # Find warmest and coldest periods
         date_label = "Day" if dataset_choice == 'GHCND' else "Month"
-        warmest = df.loc[df['TAVG'].idxmax()]
-        coldest = df.loc[df['TAVG'].idxmin()]
+        warmest = df.loc[df['TMAX'].idxmax()]
+        coldest = df.loc[df['TMIN'].idxmin()]
 
         with col_stats[0]:
             date_str = warmest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else warmest['date'].strftime('%d %b %Y')
             st.metric(
-                f"Warmest {date_label}",
-                f"{date_str} ({warmest['TAVG']:.1f}°C)"
+                f"Highest Temperature",
+                f"{date_str} ({warmest['TMAX']:.1f}°C)"
             )
         with col_stats[1]:
             date_str = coldest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else coldest['date'].strftime('%d %b %Y')
             st.metric(
-                f"Coldest {date_label}",
-                f"{date_str} ({coldest['TAVG']:.1f}°C)"
+                f"Lowest Temperature",
+                f"{date_str} ({coldest['TMIN']:.1f}°C)"
             )
         with col_stats[2]:
-            # Calculate trend per decade
-            df_clean = df.dropna(subset=['TAVG'])
-            if len(df_clean) > 1:
-                x_numeric = (df_clean['date'] - df_clean['date'].min()).dt.days / 365.25
-                z = np.polyfit(x_numeric, df_clean['TAVG'], 1)
-                trend_per_decade = z[0] * 10
-                st.metric(
-                    "Temperature Trend",
-                    f"{trend_per_decade:+.2f}°C/decade",
-                )
-        with col_stats[3]:
+            # Calculate overall average from TMIN and TMAX
+            avg_temp = (df['TMIN'].mean() + df['TMAX'].mean()) / 2
             data_points_label = "days" if dataset_choice == 'GHCND' else "months"
             st.metric(
                 f"Overall Average",
-                f"{df['TAVG'].mean():.1f}°C ({len(df)} {data_points_label})",
+                f"{avg_temp:.1f}°C ({len(df)} {data_points_label})",
             )
-    else:
-        # If we still don't have TAVG, show TMAX/TMIN stats instead
-        st.warning("⚠️ TAVG data not available for this station")
-        if 'TMAX' in df.columns:
-            with col_stats[0]:
-                st.metric("Max Temperature", f"{df['TMAX'].max():.1f}°C")
-        if 'TMIN' in df.columns:
-            with col_stats[1]:
-                st.metric("Min Temperature", f"{df['TMIN'].min():.1f}°C")
 
     # Show raw data option
     with st.expander("📋 View Raw Data"):

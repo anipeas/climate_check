@@ -8,7 +8,7 @@ st.set_page_config(
 )
 
 st.title("🌍 Climate Check")
-st.markdown("### Explore global temperature trends over time")
+st.markdown("### Explore global climate trends over time")
 
 st.markdown("---")
 
@@ -18,34 +18,37 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("""
     ### 📊 Features
-    
-    - **Interactive Visualizations**: Explore temperature trends across different locations
-    - **Historical Data**: Access decades of climate data
+
+    - **Interactive Visualizations**: Explore climate trends across different locations
+    - **Historical Data**: Access decades of climate data from weather stations worldwide
+    - **Multiple Climate Metrics**: Analyze temperature, precipitation, and other climate indicators
     - **Customizable Analysis**: Select specific year ranges and locations
-    
+
     ### 🗺️ How to Use
 
-    1. Navigate to **📊 1 historical** in the sidebar to explore temperature data
+    1. Navigate to a climate metric page in the sidebar (e.g., Temperature)
     2. Select a location using the interactive map
-    3. Choose your desired year range (1900-present)
-    4. Click **Fetch Temperature Data** to view trends
+    3. Customize config
+    4. Click **Fetch Data** to view historical trends
     """)
 
 with col2:
     st.markdown("""
     ### 📈 About
-    
-    This app helps you visualize how **global temperatures have changed over time** 
-    using data from the **NOAA Climate Data Online (CDO) API**.
-    
-    ### 🔗 Data Source
-    
-    - **GSOM** (Global Summary of the Month) dataset
-    - **GHCND** (Global Historical Climatology Network - Daily) as fallback
-    
+
+    This app helps you visualize how climate patterns have changed over time 
+    across different locations worldwide using data from different sources.
+
+    Explore various climate metrics including temperature, precipitation, snowfall,
+    and other weather indicators to understand long-term climate trends.
+
+    ### 🔗 Data Sources
+
+    - **[NOAA](https://www.ncdc.noaa.gov/cdo-web/)** 
+
     ### 🚀 Get Started
-    
-    Use the sidebar to navigate between different pages and explore the features!
+
+    Use the sidebar to navigate between different climate metrics and start exploring!
     """)
 
 st.markdown("---")
