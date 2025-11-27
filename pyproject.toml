@@ -1,0 +1,18 @@
+[project]
+name = "climate-check"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "folium>=0.15.0",
+    "jupyterlab>=4.5.0",
+    "matplotlib>=3.10.7",
+    "numpy>=1.26.0",
+    "pandas>=2.3.3",
+    "plotly>=6.3.1",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "streamlit>=1.51.0",
+    "streamlit-folium>=0.15.0",
+]
