@@ -122,15 +122,15 @@ with col_dataset:
     dataset_choice = st.radio(
         "Choose data granularity",
         options=['GSOM', 'GHCND'],
-        format_func=lambda x: 'GSOM - Monthly Data (1763+, faster)' if x == 'GSOM' else 'GHCND - Daily Data (1700s+, more detailed)',
+        format_func=lambda x: 'Monthly Data' if x == 'GSOM' else 'Daily Data',
         horizontal=True,
         help="GSOM provides monthly summaries. GHCND provides daily measurements with more detail."
     )
 
     if dataset_choice == 'GHCND':
-        st.info("ℹ️ **Daily data**: Shows much more detail but may take longer to load for large date ranges")
+        st.info("ℹ️ **Daily data**: More detailed, but may take longer to load. ~1700+")
     else:
-        st.info("ℹ️ **Monthly data**: Faster loading, good for long-term trends")
+        st.info("ℹ️ **Monthly data**: Faster loading, good for long-term trends. ~1763+")
 
 with col_time:
     st.subheader("📅 Select Time Period")
