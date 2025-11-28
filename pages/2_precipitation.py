@@ -13,13 +13,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.ncei import NCEIClient
 
 st.set_page_config(
-    page_title="Temperature Data - Climate Check",
-    page_icon="📊",
+    page_title="Precipitation Data - Climate Check",
+    page_icon="🌧️",
     layout="wide",
 )
 
-st.title("📊 Temperature Data")
-st.markdown("Explore temperature trends by location and time period")
+st.title("🌧️ Precipitation Data")
+st.markdown("Explore precipitation trends by location and time period")
 
 # Initialize session state
 default_lat = 40.7128  # New York City
@@ -56,7 +56,7 @@ folium.Marker(
     location=st.session_state.selected_location,
     popup=f"Selected Location\nLat: {st.session_state.selected_location[0]:.4f}, Lon: {st.session_state.selected_location[1]:.4f}",
     tooltip="Click map to select location",
-    icon=folium.Icon(color='red', icon='info-sign')
+    icon=folium.Icon(color='blue', icon='info-sign')
 ).add_to(m)
 
 # Render map and capture click events
@@ -128,9 +128,9 @@ with col_dataset:
     )
 
     if dataset_choice == 'GHCND':
-        st.info("ℹ️ **Daily data (GHCND)**: More detailed, but may take longer to load. ~1700+")
+        st.info("ℹ️ **Daily data**: More detailed, but may take longer to load. ~1700+")
     else:
-        st.info("ℹ️ **Monthly data (GSOM)**: Faster loading, good for long-term trends. ~1763+")
+        st.info("ℹ️ **Monthly data**: Faster loading, good for long-term trends. ~1763+")
 
 with col_time:
     st.subheader("📅 Select Time Period")
@@ -196,15 +196,15 @@ st.divider()
 col_center = st.columns([1, 2, 1])
 with col_center[1]:
     go_button = st.button(
-        "🚀 Fetch Temperature Data",
+        "🚀 Fetch Precipitation Data",
         type="primary",
-        width="stretch"
+        width='stretch'
     )
 
 # Helper functions
 @st.cache_data(ttl=3600)
 def find_nearest_station(lat, lon, start_date, end_date, dataset='GSOM'):
-    """Find the nearest weather station with temperature data"""
+    """Find the nearest weather station with precipitation data"""
     try:
         client = NCEIClient()
 
@@ -218,12 +218,12 @@ def find_nearest_station(lat, lon, start_date, end_date, dataset='GSOM'):
             extent=extent,
             startdate=start_date.strftime('%Y-%m-%d'),
             enddate=end_date.strftime('%Y-%m-%d'),
-            datatypeid='TMIN',  # Must have temperature data
+            datatypeid='PRCP',  # Must have precipitation data
             limit=100
         )
 
         if 'results' not in stations or not stations['results']:
-            return None, "No stations found in this area with temperature data"
+            return None, "No stations found in this area with precipitation data"
 
         # Find closest station by calculating distance
         import math
@@ -258,18 +258,18 @@ def find_nearest_station(lat, lon, start_date, end_date, dataset='GSOM'):
 
 
 @st.cache_data(ttl=3600)
-def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
-    """Fetch temperature data for a station"""
+def fetch_precipitation_data(station_id, start_date, end_date, dataset='GSOM'):
+    """Fetch precipitation data for a station"""
     try:
         client = NCEIClient()
 
-        # Fetch each temperature datatype separately to avoid pagination issues
+        # Fetch precipitation data
         # GSOM allows max 10 year ranges, GHCND allows max 1 year range
         all_data = []
         failed_batches = []
 
-        # Temperature data types we want
-        temp_datatypes = ['TMIN', 'TMAX']
+        # Precipitation data types
+        precip_datatypes = ['PRCP']
 
         # Set batch size based on dataset
         batch_size = 10 if dataset == 'GSOM' else 1
@@ -277,7 +277,7 @@ def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
         start_year = start_date.year
         end_year = end_date.year
 
-        for datatype in temp_datatypes:
+        for datatype in precip_datatypes:
             for year_start in range(start_year, end_year + 1, batch_size):
                 year_end = min(year_start + batch_size - 1, end_year)
 
@@ -302,17 +302,16 @@ def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
                     # Track failed batches
                     failed_batches.append({
                         'year_range': f"{year_start}-{year_end}",
-                        'datatype': datatype,
                         'error': str(e)
                     })
                     continue
 
         if not all_data:
-            error_msg = "No temperature data found for this station"
+            error_msg = "No precipitation data found for this station"
             if failed_batches:
                 error_msg += f"\n\nFailed to fetch {len(failed_batches)} batch(es). Errors:\n"
                 for batch in failed_batches[:3]:  # Show first 3 errors
-                    error_msg += f"- {batch['datatype']} {batch['year_range']}: {batch['error']}\n"
+                    error_msg += f"- {batch['year_range']}: {batch['error']}\n"
             return None, error_msg
 
         # Convert to DataFrame
@@ -321,10 +320,10 @@ def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
         df['year'] = df['date'].dt.year
         df['month'] = df['date'].dt.month
 
-        # Convert temperature values to numeric
+        # Convert precipitation values to numeric (already in mm for metric)
         df['value'] = pd.to_numeric(df['value'])
 
-        # Pivot to get TMIN, TMAX as separate columns
+        # Pivot to get PRCP as column
         df_pivot = df.pivot_table(
             index=['year', 'month', 'date'],
             columns='datatype',
@@ -343,8 +342,8 @@ def fetch_temperature_data(station_id, start_date, end_date, dataset='GSOM'):
         return None, f"Error fetching data: {str(e)}"
 
 
-def plot_temperature_data(df, station_info, dataset='GSOM'):
-    """Create temperature visualization with monthly or daily data points"""
+def plot_precipitation_data(df, station_info, dataset='GSOM'):
+    """Create precipitation visualization with monthly or daily data points"""
     # Use data directly (no aggregation)
     data = df.copy()
 
@@ -357,36 +356,30 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
     # Determine hover template based on granularity
     date_format = '%d %b %Y' if dataset == 'GHCND' else '%b %Y'
 
-    # Add TMAX and TMIN as separate lines
-    if 'TMAX' in data.columns and 'TMIN' in data.columns:
+    # Add PRCP as scatter plot
+    if 'PRCP' in data.columns:
         fig.add_trace(go.Scatter(
             x=data['date'],
-            y=data['TMAX'],
-            mode='lines',
-            name='Maximum Temperature',
-            line=dict(color='rgba(255, 87, 51, 0.4)', width=1.5),
-            showlegend=True,
-            hovertemplate=f'%{{x|{date_format}}}<br>Max: %{{y:.1f}}°C<extra></extra>'
-        ))
-
-        fig.add_trace(go.Scatter(
-            x=data['date'],
-            y=data['TMIN'],
-            mode='lines',
-            name='Minimum Temperature',
-            line=dict(color='rgba(0, 150, 136, 0.4)', width=1.5),
-            showlegend=True,
-            hovertemplate=f'%{{x|{date_format}}}<br>Min: %{{y:.1f}}°C<extra></extra>'
+            y=data['PRCP'],
+            mode='markers',
+            name='Precipitation',
+            marker=dict(
+                color='rgba(30, 136, 229, 0.6)',
+                size=6,
+                line=dict(width=0.5, color='rgba(30, 136, 229, 1)')
+            ),
+            hovertemplate=f'%{{x|{date_format}}}<br>Precipitation: %{{y:.1f}} mm<extra></extra>'
         ))
 
     # Update layout
     fig.update_layout(
-        title=f"{granularity} Temperature Data - {station_info['name']}",
+        title=f"{granularity} Precipitation Data - {station_info['name']}",
         xaxis_title="Date",
-        yaxis_title="Temperature (°C)",
+        yaxis_title="Precipitation (mm)",
         hovermode='x unified',
         height=600,
         template='plotly_white',
+        showlegend=True,
         legend=dict(
             yanchor="top",
             y=0.99,
@@ -410,7 +403,7 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
 # Data visualization section
 if go_button:
     st.divider()
-    st.subheader("📈 Temperature Data")
+    st.subheader("📈 Precipitation Data")
 
     # Step 1: Find nearest station
     with st.spinner("🔍 Finding nearest weather station..."):
@@ -440,23 +433,18 @@ if go_button:
         with col_info[3]:
             st.metric("Data Coverage", f"{station.get('datacoverage', 0)*100:.0f}%")
 
-    # Step 2: Fetch temperature data
+    # Step 2: Fetch precipitation data
     granularity_text = "daily" if dataset_choice == 'GHCND' else "monthly"
-    with st.spinner(f"📊 Fetching {granularity_text} temperature data (TMIN, TMAX)..."):
-        df, message = fetch_temperature_data(station['id'], start_date, end_date, dataset_choice)
+    with st.spinner(f"📊 Fetching {granularity_text} precipitation data (PRCP)..."):
+        df, message = fetch_precipitation_data(station['id'], start_date, end_date, dataset_choice)
 
         if df is None:
             # Error occurred
             st.error(f"❌ {message}")
             st.stop()
 
-        # Store in session state for persistence across reruns
-        st.session_state.temp_data = df
-        st.session_state.temp_station = station
-        st.session_state.temp_dataset = dataset_choice
-
         # Show what datatypes we got
-        available_types = [col for col in ['TMIN', 'TMAX'] if col in df.columns]
+        available_types = [col for col in ['PRCP'] if col in df.columns]
         years_with_data = sorted(df['year'].unique())
 
         data_points_label = "days" if dataset_choice == 'GHCND' else "months"
@@ -468,201 +456,45 @@ if go_button:
 
         st.info(f"📊 Available data types: **{', '.join(available_types)}** | Years: **{years_with_data[0]}-{years_with_data[-1]}**")
 
-# Render visualizations if data exists in session state
-if 'temp_data' in st.session_state and st.session_state.temp_data is not None:
-    df = st.session_state.temp_data
-    station = st.session_state.temp_station
-    dataset_choice = st.session_state.temp_dataset
+    # Step 3: Plot the data
+    fig = plot_precipitation_data(df, station, dataset_choice)
+    st.plotly_chart(fig, width='stretch')
 
-    # Show header if not first fetch
-    if not go_button:
-        st.divider()
-        st.subheader("📈 Temperature Data")
-
-    # Always show the plot when data exists
-    import numpy as np
-    fig = plot_temperature_data(df, station, dataset_choice)
-    st.plotly_chart(fig, width="stretch")
+    # Additional statistics
+    st.divider()
+    st.subheader("📊 Summary Statistics")
 
     col_stats = st.columns(3)
 
-    if 'TMAX' in df.columns and 'TMIN' in df.columns:
-        # Find warmest and coldest periods
+    if 'PRCP' in df.columns:
+        # Find wettest and driest periods
         date_label = "Day" if dataset_choice == 'GHCND' else "Month"
-        warmest = df.loc[df['TMAX'].idxmax()]
-        coldest = df.loc[df['TMIN'].idxmin()]
+        wettest = df.loc[df['PRCP'].idxmax()]
+
+        # Calculate total and average
+        total_precip = df['PRCP'].sum()
+        avg_precip = df['PRCP'].mean()
 
         with col_stats[0]:
-            date_str = warmest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else warmest['date'].strftime('%d %b %Y')
+            date_str = wettest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else wettest['date'].strftime('%d %b %Y')
             st.metric(
-                f"Highest Temperature",
-                f"{date_str} ({warmest['TMAX']:.1f}°C)"
+                f"Wettest {date_label}",
+                f"{wettest['PRCP']:.1f} mm",
+                delta=date_str,
+                delta_color="off"
             )
         with col_stats[1]:
-            date_str = coldest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else coldest['date'].strftime('%d %b %Y')
             st.metric(
-                f"Lowest Temperature",
-                f"{date_str} ({coldest['TMIN']:.1f}°C)"
+                "Total Precipitation",
+                f"{total_precip:.1f} mm"
             )
         with col_stats[2]:
-            # Calculate overall average from TMIN and TMAX
-            avg_temp = (df['TMIN'].mean() + df['TMAX'].mean()) / 2
-            data_points_label = "days" if dataset_choice == 'GHCND' else "months"
+            data_points_label = "day" if dataset_choice == 'GHCND' else "month"
             st.metric(
-                f"Overall Average (across {len(df)} {data_points_label})",
-                f"{avg_temp:.1f}°C",
+                f"Average per {data_points_label}",
+                f"{avg_precip:.1f} mm"
             )
-
-    # Monthly trend analysis
-    st.divider()
-    st.subheader("📅 Monthly Trend Analysis")
-    st.markdown("Analyze temperature trends for a specific month across all years")
-
-    # Month selector
-    months = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ]
-    selected_month = st.selectbox(
-        "Select Month",
-        options=months,
-        index=0,
-        help="View temperature trends for this month across all years in your dataset"
-    )
-
-    # Get month number (1-12)
-    month_num = months.index(selected_month) + 1
-
-    # Filter data for selected month
-    df_month = df[df['month'] == month_num].copy()
-
-    if len(df_month) > 0:
-        # Create monthly trend plot
-        fig_month = go.Figure()
-
-        # Determine hover template based on granularity
-        if dataset_choice == 'GHCND':
-            # For daily data, aggregate by year (average for the month)
-            df_month_agg = df_month.groupby('year').agg({
-                'TMAX': 'mean',
-                'TMIN': 'mean'
-            }).reset_index()
-            hover_suffix = " (avg)"
-        else:
-            # For monthly data, use as is
-            df_month_agg = df_month.groupby('year').agg({
-                'TMAX': 'first',
-                'TMIN': 'first'
-            }).reset_index()
-            hover_suffix = ""
-
-        # Add TMAX line
-        if 'TMAX' in df_month_agg.columns:
-            fig_month.add_trace(go.Scatter(
-                x=df_month_agg['year'],
-                y=df_month_agg['TMAX'],
-                mode='lines+markers',
-                name='Maximum Temperature',
-                line=dict(color='rgba(255, 87, 51, 0.8)', width=2),
-                marker=dict(size=6),
-                hovertemplate=f'%{{x}}<br>Max: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
-            ))
-
-        # Add TMIN line
-        if 'TMIN' in df_month_agg.columns:
-            fig_month.add_trace(go.Scatter(
-                x=df_month_agg['year'],
-                y=df_month_agg['TMIN'],
-                mode='lines+markers',
-                name='Minimum Temperature',
-                line=dict(color='rgba(0, 150, 136, 0.8)', width=2),
-                marker=dict(size=6),
-                hovertemplate=f'%{{x}}<br>Min: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
-            ))
-
-        # Update layout
-        fig_month.update_layout(
-            title=f"{selected_month} Temperature Trends - {station['name']}",
-            xaxis_title="Year",
-            yaxis_title="Temperature (°C)",
-            hovermode='x unified',
-            height=500,
-            template='plotly_white',
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="left",
-                x=0.01
-            )
-        )
-
-        # Format x-axis to show years
-        fig_month.update_xaxes(dtick=max(1, len(df_month_agg) // 20))
-
-        st.plotly_chart(fig_month, use_container_width=True)
-
-        # Monthly statistics
-        col_month_stats = st.columns(4)
-
-        with col_month_stats[0]:
-            warmest_year = df_month_agg.loc[df_month_agg['TMAX'].idxmax()]
-            st.metric(
-                f"Warmest {selected_month}",
-                f"{int(warmest_year['year'])} ({warmest_year['TMAX']:.1f}°C)",
-            )
-
-        with col_month_stats[1]:
-            coldest_year = df_month_agg.loc[df_month_agg['TMIN'].idxmin()]
-            st.metric(
-                f"Coldest {selected_month}",
-                f"{int(coldest_year['year'])} ({coldest_year['TMIN']:.1f}°C)",
-            )
-
-        with col_month_stats[2]:
-            avg_max = df_month_agg['TMAX'].mean()
-            st.metric(
-                f"Average High (across {len(df_month_agg)} years)",
-                f"{avg_max:.1f}°C",
-            )
-
-        with col_month_stats[3]:
-            avg_min = df_month_agg['TMIN'].mean()
-            st.metric(
-                f"Average Low (across {len(df_month_agg)} years)",
-                f"{avg_min:.1f}°C",
-            )
-
-        # Temperature trend analysis
-        if len(df_month_agg) >= 10:
-            # Calculate linear trend for TMAX and TMIN
-            import numpy as np
-            from scipy import stats
-
-            years = df_month_agg['year'].values
-            tmax_vals = df_month_agg['TMAX'].values
-            tmin_vals = df_month_agg['TMIN'].values
-
-            # Linear regression for TMAX
-            slope_max, intercept_max, r_value_max, p_value_max, std_err_max = stats.linregress(years, tmax_vals)
-            # Linear regression for TMIN
-            slope_min, intercept_min, r_value_min, p_value_min, std_err_min = stats.linregress(years, tmin_vals)
-
-            # Calculate temperature change over the period
-            year_span = years[-1] - years[0]
-            temp_change_max = slope_max * year_span
-            temp_change_min = slope_min * year_span
-
-            st.info(
-                f"📈 **Trend Analysis**: Over {year_span} years, {selected_month} maximum temperatures have "
-                f"{'increased' if temp_change_max > 0 else 'decreased'} by **{abs(temp_change_max):.2f}°C** "
-                f"({slope_max:.3f}°C/year) and minimum temperatures have "
-                f"{'increased' if temp_change_min > 0 else 'decreased'} by **{abs(temp_change_min):.2f}°C** "
-                f"({slope_min:.3f}°C/year)."
-            )
-    else:
-        st.warning(f"No data available for {selected_month} in the selected date range.")
 
     # Show raw data option
-    st.divider()
     with st.expander("📋 View Raw Data"):
-        st.dataframe(df, use_container_width=True, height=300)
+        st.dataframe(df, width='stretch', height=300)
