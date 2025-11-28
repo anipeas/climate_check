@@ -443,6 +443,11 @@ if go_button:
             st.error(f"❌ {message}")
             st.stop()
 
+        # Store in session state for persistence across reruns
+        st.session_state.precip_data = df
+        st.session_state.precip_station = station
+        st.session_state.precip_dataset = dataset_choice
+
         # Show what datatypes we got
         available_types = [col for col in ['PRCP'] if col in df.columns]
         years_with_data = sorted(df['year'].unique())
@@ -456,9 +461,20 @@ if go_button:
 
         st.info(f"📊 Available data types: **{', '.join(available_types)}** | Years: **{years_with_data[0]}-{years_with_data[-1]}**")
 
-    # Step 3: Plot the data
+# Render visualizations if data exists in session state
+if 'precip_data' in st.session_state and st.session_state.precip_data is not None:
+    df = st.session_state.precip_data
+    station = st.session_state.precip_station
+    dataset_choice = st.session_state.precip_dataset
+
+    # Show header if not first fetch
+    if not go_button:
+        st.divider()
+        st.subheader("📈 Precipitation Data")
+
+    # Always show the plot when data exists
     fig = plot_precipitation_data(df, station, dataset_choice)
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
     # Additional statistics
     st.divider()
@@ -495,6 +511,122 @@ if go_button:
                 f"{avg_precip:.1f} mm"
             )
 
+    # Monthly trend analysis
+    st.divider()
+    st.subheader("📅 Monthly Precipitation Analysis")
+    st.markdown("Analyze total precipitation for a specific month across all years")
+
+    # Month selector
+    months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ]
+    selected_month = st.selectbox(
+        "Select Month",
+        options=months,
+        index=0,
+        help="View total precipitation for this month across all years in your dataset",
+        key="precip_month_selector"
+    )
+
+    # Get month number (1-12)
+    month_num = months.index(selected_month) + 1
+
+    # Filter data for selected month
+    df_month = df[df['month'] == month_num].copy()
+
+    if len(df_month) > 0 and 'PRCP' in df_month.columns:
+        # Sum precipitation by year for the selected month
+        df_month_agg = df_month.groupby('year').agg({
+            'PRCP': 'sum'  # Sum all precipitation for the month
+        }).reset_index()
+
+        # Create monthly trend plot
+        fig_month = go.Figure()
+
+        # Add precipitation as bars
+        fig_month.add_trace(go.Bar(
+            x=df_month_agg['year'],
+            y=df_month_agg['PRCP'],
+            name='Total Precipitation',
+            marker=dict(color='rgba(30, 136, 229, 0.6)'),
+            hovertemplate='%{x}<br>Total: %{y:.1f} mm<extra></extra>'
+        ))
+
+        # Update layout
+        fig_month.update_layout(
+            title=f"{selected_month} Total Precipitation - {station['name']}",
+            xaxis_title="Year",
+            yaxis_title="Total Precipitation (mm)",
+            hovermode='x unified',
+            height=500,
+            template='plotly_white',
+            showlegend=False
+        )
+
+        # Format x-axis to show years
+        fig_month.update_xaxes(dtick=max(1, len(df_month_agg) // 20))
+
+        st.plotly_chart(fig_month, use_container_width=True)
+
+        # Monthly statistics
+        col_month_stats = st.columns(4)
+
+        wettest_year = df_month_agg.loc[df_month_agg['PRCP'].idxmax()]
+        driest_year = df_month_agg.loc[df_month_agg['PRCP'].idxmin()]
+        avg_precip = df_month_agg['PRCP'].mean()
+        total_precip = df_month_agg['PRCP'].sum()
+
+        with col_month_stats[0]:
+            st.metric(
+                f"Wettest {selected_month}",
+                f"{int(wettest_year['year'])} ({wettest_year['PRCP']:.1f} mm)",
+            )
+
+        with col_month_stats[1]:
+            st.metric(
+                f"Driest {selected_month}",
+                f"{int(driest_year['year'])} ({driest_year['PRCP']:.1f} mm)",
+            )
+
+        with col_month_stats[2]:
+            st.metric(
+                f"Average (across {len(df_month_agg)} years)",
+                f"{avg_precip:.1f} mm",
+            )
+
+        with col_month_stats[3]:
+            st.metric(
+                f"Total (all {selected_month}s)",
+                f"{total_precip:.1f} mm",
+            )
+
+        # Precipitation trend analysis
+        if len(df_month_agg) >= 10:
+            # Calculate linear trend
+            import numpy as np
+            from scipy import stats
+
+            years = df_month_agg['year'].values
+            precip_vals = df_month_agg['PRCP'].values
+
+            # Linear regression
+            slope, intercept, r_value, p_value, std_err = stats.linregress(years, precip_vals)
+
+            # Calculate precipitation change over the period
+            year_span = years[-1] - years[0]
+            precip_change = slope * year_span
+            precip_change_pct = (precip_change / avg_precip) * 100 if avg_precip > 0 else 0
+
+            st.info(
+                f"📈 **Trend Analysis**: Over {year_span} years, {selected_month} total precipitation has "
+                f"{'increased' if precip_change > 0 else 'decreased'} by **{abs(precip_change):.1f} mm** "
+                f"({abs(precip_change_pct):.1f}%, {slope:.2f} mm/year)."
+            )
+    else:
+        st.warning(f"No precipitation data available for {selected_month} in the selected date range.")
+
     # Show raw data option
+    st.divider()
     with st.expander("📋 View Raw Data"):
-        st.dataframe(df, width='stretch', height=300)
+        st.dataframe(df, use_container_width=True, height=300)

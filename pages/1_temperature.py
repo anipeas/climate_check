@@ -358,7 +358,7 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
     date_format = '%d %b %Y' if dataset == 'GHCND' else '%b %Y'
 
     # Add TMAX and TMIN as separate lines
-    if 'TMAX' in data.columns and 'TMIN' in data.columns:
+    if 'TMAX' in data.columns:
         fig.add_trace(go.Scatter(
             x=data['date'],
             y=data['TMAX'],
@@ -369,6 +369,7 @@ def plot_temperature_data(df, station_info, dataset='GSOM'):
             hovertemplate=f'%{{x|{date_format}}}<br>Max: %{{y:.1f}}°C<extra></extra>'
         ))
 
+    if 'TMIN' in data.columns:
         fig.add_trace(go.Scatter(
             x=data['date'],
             y=data['TMIN'],
@@ -484,11 +485,13 @@ if 'temp_data' in st.session_state and st.session_state.temp_data is not None:
     fig = plot_temperature_data(df, station, dataset_choice)
     st.plotly_chart(fig, width="stretch")
 
-    col_stats = st.columns(3)
+    has_tmax = 'TMAX' in df.columns
+    has_tmin = 'TMIN' in df.columns
+    date_label = "Day" if dataset_choice == 'GHCND' else "Month"
+    data_points_label = "days" if dataset_choice == 'GHCND' else "months"
 
-    if 'TMAX' in df.columns and 'TMIN' in df.columns:
-        # Find warmest and coldest periods
-        date_label = "Day" if dataset_choice == 'GHCND' else "Month"
+    if has_tmax and has_tmin:
+        col_stats = st.columns(3)
         warmest = df.loc[df['TMAX'].idxmax()]
         coldest = df.loc[df['TMIN'].idxmin()]
 
@@ -507,9 +510,40 @@ if 'temp_data' in st.session_state and st.session_state.temp_data is not None:
         with col_stats[2]:
             # Calculate overall average from TMIN and TMAX
             avg_temp = (df['TMIN'].mean() + df['TMAX'].mean()) / 2
-            data_points_label = "days" if dataset_choice == 'GHCND' else "months"
             st.metric(
                 f"Overall Average (across {len(df)} {data_points_label})",
+                f"{avg_temp:.1f}°C",
+            )
+    elif has_tmax:
+        col_stats = st.columns(2)
+        warmest = df.loc[df['TMAX'].idxmax()]
+
+        with col_stats[0]:
+            date_str = warmest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else warmest['date'].strftime('%d %b %Y')
+            st.metric(
+                f"Highest Temperature",
+                f"{date_str} ({warmest['TMAX']:.1f}°C)"
+            )
+        with col_stats[1]:
+            avg_temp = df['TMAX'].mean()
+            st.metric(
+                f"Average Maximum (across {len(df)} {data_points_label})",
+                f"{avg_temp:.1f}°C",
+            )
+    elif has_tmin:
+        col_stats = st.columns(2)
+        coldest = df.loc[df['TMIN'].idxmin()]
+
+        with col_stats[0]:
+            date_str = coldest['date'].strftime('%b %Y') if dataset_choice == 'GSOM' else coldest['date'].strftime('%d %b %Y')
+            st.metric(
+                f"Lowest Temperature",
+                f"{date_str} ({coldest['TMIN']:.1f}°C)"
+            )
+        with col_stats[1]:
+            avg_temp = df['TMIN'].mean()
+            st.metric(
+                f"Average Minimum (across {len(df)} {data_points_label})",
                 f"{avg_temp:.1f}°C",
             )
 
@@ -541,124 +575,168 @@ if 'temp_data' in st.session_state and st.session_state.temp_data is not None:
         fig_month = go.Figure()
 
         # Determine hover template based on granularity
-        if dataset_choice == 'GHCND':
-            # For daily data, aggregate by year (average for the month)
-            df_month_agg = df_month.groupby('year').agg({
-                'TMAX': 'mean',
-                'TMIN': 'mean'
-            }).reset_index()
-            hover_suffix = " (avg)"
+        # Build aggregation dict based on available columns
+        agg_dict = {}
+        if 'TMAX' in df_month.columns:
+            agg_dict['TMAX'] = 'mean' if dataset_choice == 'GHCND' else 'first'
+        if 'TMIN' in df_month.columns:
+            agg_dict['TMIN'] = 'mean' if dataset_choice == 'GHCND' else 'first'
+
+        if not agg_dict:
+            st.warning(f"No temperature data available for {selected_month}")
         else:
-            # For monthly data, use as is
-            df_month_agg = df_month.groupby('year').agg({
-                'TMAX': 'first',
-                'TMIN': 'first'
-            }).reset_index()
-            hover_suffix = ""
+            df_month_agg = df_month.groupby('year').agg(agg_dict).reset_index()
+            hover_suffix = " (avg)" if dataset_choice == 'GHCND' else ""
 
-        # Add TMAX line
-        if 'TMAX' in df_month_agg.columns:
-            fig_month.add_trace(go.Scatter(
-                x=df_month_agg['year'],
-                y=df_month_agg['TMAX'],
-                mode='lines+markers',
-                name='Maximum Temperature',
-                line=dict(color='rgba(255, 87, 51, 0.8)', width=2),
-                marker=dict(size=6),
-                hovertemplate=f'%{{x}}<br>Max: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
-            ))
+            # Add TMAX line
+            if 'TMAX' in df_month_agg.columns:
+                fig_month.add_trace(go.Scatter(
+                    x=df_month_agg['year'],
+                    y=df_month_agg['TMAX'],
+                    mode='lines+markers',
+                    name='Maximum Temperature',
+                    line=dict(color='rgba(255, 87, 51, 0.8)', width=2),
+                    marker=dict(size=6),
+                    hovertemplate=f'%{{x}}<br>Max: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
+                ))
 
-        # Add TMIN line
-        if 'TMIN' in df_month_agg.columns:
-            fig_month.add_trace(go.Scatter(
-                x=df_month_agg['year'],
-                y=df_month_agg['TMIN'],
-                mode='lines+markers',
-                name='Minimum Temperature',
-                line=dict(color='rgba(0, 150, 136, 0.8)', width=2),
-                marker=dict(size=6),
-                hovertemplate=f'%{{x}}<br>Min: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
-            ))
+            # Add TMIN line
+            if 'TMIN' in df_month_agg.columns:
+                fig_month.add_trace(go.Scatter(
+                    x=df_month_agg['year'],
+                    y=df_month_agg['TMIN'],
+                    mode='lines+markers',
+                    name='Minimum Temperature',
+                    line=dict(color='rgba(0, 150, 136, 0.8)', width=2),
+                    marker=dict(size=6),
+                    hovertemplate=f'%{{x}}<br>Min: %{{y:.1f}}°C{hover_suffix}<extra></extra>'
+                ))
 
-        # Update layout
-        fig_month.update_layout(
-            title=f"{selected_month} Temperature Trends - {station['name']}",
-            xaxis_title="Year",
-            yaxis_title="Temperature (°C)",
-            hovermode='x unified',
-            height=500,
-            template='plotly_white',
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="left",
-                x=0.01
-            )
-        )
-
-        # Format x-axis to show years
-        fig_month.update_xaxes(dtick=max(1, len(df_month_agg) // 20))
-
-        st.plotly_chart(fig_month, use_container_width=True)
-
-        # Monthly statistics
-        col_month_stats = st.columns(4)
-
-        with col_month_stats[0]:
-            warmest_year = df_month_agg.loc[df_month_agg['TMAX'].idxmax()]
-            st.metric(
-                f"Warmest {selected_month}",
-                f"{int(warmest_year['year'])} ({warmest_year['TMAX']:.1f}°C)",
+            # Update layout
+            fig_month.update_layout(
+                title=f"{selected_month} Temperature Trends - {station['name']}",
+                xaxis_title="Year",
+                yaxis_title="Temperature (°C)",
+                hovermode='x unified',
+                height=500,
+                template='plotly_white',
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
             )
 
-        with col_month_stats[1]:
-            coldest_year = df_month_agg.loc[df_month_agg['TMIN'].idxmin()]
-            st.metric(
-                f"Coldest {selected_month}",
-                f"{int(coldest_year['year'])} ({coldest_year['TMIN']:.1f}°C)",
-            )
+            # Format x-axis to show years
+            fig_month.update_xaxes(dtick=max(1, len(df_month_agg) // 20))
 
-        with col_month_stats[2]:
-            avg_max = df_month_agg['TMAX'].mean()
-            st.metric(
-                f"Average High (across {len(df_month_agg)} years)",
-                f"{avg_max:.1f}°C",
-            )
+            st.plotly_chart(fig_month, use_container_width=True)
 
-        with col_month_stats[3]:
-            avg_min = df_month_agg['TMIN'].mean()
-            st.metric(
-                f"Average Low (across {len(df_month_agg)} years)",
-                f"{avg_min:.1f}°C",
-            )
+            # Monthly statistics
+            has_tmax = 'TMAX' in df_month_agg.columns
+            has_tmin = 'TMIN' in df_month_agg.columns
 
-        # Temperature trend analysis
-        if len(df_month_agg) >= 10:
-            # Calculate linear trend for TMAX and TMIN
-            import numpy as np
-            from scipy import stats
+            # Show 2 or 4 columns depending on what data is available
+            if has_tmax and has_tmin:
+                col_month_stats = st.columns(4)
 
-            years = df_month_agg['year'].values
-            tmax_vals = df_month_agg['TMAX'].values
-            tmin_vals = df_month_agg['TMIN'].values
+                with col_month_stats[0]:
+                    warmest_year = df_month_agg.loc[df_month_agg['TMAX'].idxmax()]
+                    st.metric(
+                        f"Warmest {selected_month}",
+                        f"{int(warmest_year['year'])} ({warmest_year['TMAX']:.1f}°C)",
+                    )
 
-            # Linear regression for TMAX
-            slope_max, intercept_max, r_value_max, p_value_max, std_err_max = stats.linregress(years, tmax_vals)
-            # Linear regression for TMIN
-            slope_min, intercept_min, r_value_min, p_value_min, std_err_min = stats.linregress(years, tmin_vals)
+                with col_month_stats[1]:
+                    coldest_year = df_month_agg.loc[df_month_agg['TMIN'].idxmin()]
+                    st.metric(
+                        f"Coldest {selected_month}",
+                        f"{int(coldest_year['year'])} ({coldest_year['TMIN']:.1f}°C)",
+                    )
 
-            # Calculate temperature change over the period
-            year_span = years[-1] - years[0]
-            temp_change_max = slope_max * year_span
-            temp_change_min = slope_min * year_span
+                with col_month_stats[2]:
+                    avg_max = df_month_agg['TMAX'].mean()
+                    st.metric(
+                        f"Average High (across {len(df_month_agg)} years)",
+                        f"{avg_max:.1f}°C",
+                    )
 
-            st.info(
-                f"📈 **Trend Analysis**: Over {year_span} years, {selected_month} maximum temperatures have "
-                f"{'increased' if temp_change_max > 0 else 'decreased'} by **{abs(temp_change_max):.2f}°C** "
-                f"({slope_max:.3f}°C/year) and minimum temperatures have "
-                f"{'increased' if temp_change_min > 0 else 'decreased'} by **{abs(temp_change_min):.2f}°C** "
-                f"({slope_min:.3f}°C/year)."
-            )
+                with col_month_stats[3]:
+                    avg_min = df_month_agg['TMIN'].mean()
+                    st.metric(
+                        f"Average Low (across {len(df_month_agg)} years)",
+                        f"{avg_min:.1f}°C",
+                    )
+            elif has_tmax:
+                col_month_stats = st.columns(2)
+
+                with col_month_stats[0]:
+                    warmest_year = df_month_agg.loc[df_month_agg['TMAX'].idxmax()]
+                    st.metric(
+                        f"Warmest {selected_month}",
+                        f"{int(warmest_year['year'])} ({warmest_year['TMAX']:.1f}°C)",
+                    )
+
+                with col_month_stats[1]:
+                    avg_max = df_month_agg['TMAX'].mean()
+                    st.metric(
+                        f"Average High (across {len(df_month_agg)} years)",
+                        f"{avg_max:.1f}°C",
+                    )
+            elif has_tmin:
+                col_month_stats = st.columns(2)
+
+                with col_month_stats[0]:
+                    coldest_year = df_month_agg.loc[df_month_agg['TMIN'].idxmin()]
+                    st.metric(
+                        f"Coldest {selected_month}",
+                        f"{int(coldest_year['year'])} ({coldest_year['TMIN']:.1f}°C)",
+                    )
+
+                with col_month_stats[1]:
+                    avg_min = df_month_agg['TMIN'].mean()
+                    st.metric(
+                        f"Average Low (across {len(df_month_agg)} years)",
+                        f"{avg_min:.1f}°C",
+                    )
+
+            # Temperature trend analysis
+            if len(df_month_agg) >= 10:
+                # Calculate linear trend for available data
+                import numpy as np
+                from scipy import stats
+
+                years = df_month_agg['year'].values
+
+                trend_parts = []
+
+                if has_tmax:
+                    tmax_vals = df_month_agg['TMAX'].values
+                    slope_max, intercept_max, r_value_max, p_value_max, std_err_max = stats.linregress(years, tmax_vals)
+                    year_span = years[-1] - years[0]
+                    temp_change_max = slope_max * year_span
+                    trend_parts.append(
+                        f"maximum temperatures have {'increased' if temp_change_max > 0 else 'decreased'} "
+                        f"by **{abs(temp_change_max):.2f}°C** ({slope_max:.3f}°C/year)"
+                    )
+
+                if has_tmin:
+                    tmin_vals = df_month_agg['TMIN'].values
+                    slope_min, intercept_min, r_value_min, p_value_min, std_err_min = stats.linregress(years, tmin_vals)
+                    year_span = years[-1] - years[0]
+                    temp_change_min = slope_min * year_span
+                    trend_parts.append(
+                        f"minimum temperatures have {'increased' if temp_change_min > 0 else 'decreased'} "
+                        f"by **{abs(temp_change_min):.2f}°C** ({slope_min:.3f}°C/year)"
+                    )
+
+                if trend_parts:
+                    connector = " and " if len(trend_parts) == 2 else ""
+                    st.info(
+                        f"📈 **Trend Analysis**: Over {year_span} years, {selected_month} "
+                        f"{connector.join(trend_parts)}."
+                    )
     else:
         st.warning(f"No data available for {selected_month} in the selected date range.")
 
